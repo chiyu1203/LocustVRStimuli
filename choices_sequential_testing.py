@@ -109,13 +109,13 @@ class MyExperiment(ExperimentBase):
             random.shuffle(toggle_pair)
             ToggleInit.append(toggle_pair)
         ToggleInit = np.array(ToggleInit)
-        FocalHeading = self.FocalAngle.value
-
+        FocalHeading = self.FocalAngle.value 
+        
         spdBaitx = BaitSpeed * np.cos(FocalHeading)
         spdBaity = BaitSpeed * np.sin(FocalHeading)
         posBaitx = BaitDis * np.cos(FocalHeading)
         posBaity = BaitDis * np.sin(FocalHeading)
-        orientation_bait = FocalHeading 
+        orientation_bait = FocalHeading + 1.57
 
 
         # Load base Locust model (used for cloning)
@@ -132,10 +132,10 @@ class MyExperiment(ExperimentBase):
         pos1 = [100, 100]   # placeholder for test Locust position
         # Test Locust (for choice phase)
         Locust1 = Locust.clone('test', how='shallow')
-        Locust1.move(pos1[0], pos1[1], 0.06, orientation_z= orientation_test, hidden=True)
+        Locust1.move(pos1[0], pos1[1], 0.06, orientation_z= -1.57, hidden=True)
         #Locust1.animation_start('ArmatureAction')
         Locust2 = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x_black.osgt')
-        Locust2.move(pos1[0], pos1[1], 0.06, orientation_z= orientation_test, hidden=True)
+        Locust2.move(pos1[0], pos1[1], 0.06, orientation_z= -1.57, hidden=True)
         #Locust2.animation_start('ArmatureAction')
 
     
@@ -191,8 +191,6 @@ class MyExperiment(ExperimentBase):
                     # Spawn test Locust at radial distance TestDis
                     pos1[0] = TestDis * np.cos(angle_test)
                     pos1[1] = TestDis * np.sin(angle_test)
-
-                 
 
                     # Movement direction towards the animal (radially inward)
                     spdTestx = -TestSpeed * np.cos(angle_test)
@@ -325,6 +323,7 @@ class MyExperiment(ExperimentBase):
                                 orientation_z=orientation_test,
                                 hidden=True
                             )
+                            reappeared = True
                         else:
                             Locust1.move(
                                 pos1[0], pos1[1],
@@ -339,32 +338,33 @@ class MyExperiment(ExperimentBase):
                                 hidden=False
                             )
                             reappeared = True
-                    elif LocustTexture == 1:
-                        Locust1.move(
-                            pos1[0], pos1[1],
-                            0.06,
-                            orientation_z=orientation_test,
-                            hidden=False
-                        )
-                        Locust2.move(
-                            pos1[0], pos1[1],
-                            0.06,
-                            orientation_z=orientation_test,
-                            hidden=True
-                        )
                     else:
-                        Locust1.move(
-                            pos1[0], pos1[1],
-                            0.06,
-                            orientation_z=orientation_test,
-                            hidden=True
-                        )
-                        Locust2.move(
-                            pos1[0], pos1[1],
-                            0.06,
-                            orientation_z=orientation_test,
-                            hidden=False
-                        )
+                        if LocustTexture == 1:
+                            Locust1.move(
+                                pos1[0], pos1[1],
+                                0.06,
+                                orientation_z=orientation_test,
+                                hidden=False
+                            )
+                            Locust2.move(
+                                pos1[0], pos1[1],
+                                0.06,
+                                orientation_z=orientation_test,
+                                hidden=True
+                            )
+                        else:
+                            Locust1.move(
+                                pos1[0], pos1[1],
+                                0.06,
+                                orientation_z=orientation_test,
+                                hidden=True
+                            )
+                            Locust2.move(
+                                pos1[0], pos1[1],
+                                0.06,
+                                orientation_z=orientation_test,
+                                hidden=False
+                            )
 
                         if current_distance_from_origin >= TestDis:
                             Locust1.move(

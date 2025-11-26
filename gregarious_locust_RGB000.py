@@ -31,19 +31,18 @@ class MyExperiment(ExperimentBase):
         posBaitx = BaitDis * np.cos(FocalHeading)
         posBaity = BaitDis * np.sin(FocalHeading)
         orientation = FocalHeading - 1.57
-        Locust = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust.osgt')
-        time.sleep(10) 
+        Locust = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x.osgt')
+        time.sleep(1) 
         Locust.move(posBaitx,posBaity, 0.06, orientation_z = orientation, hidden=False)
-        self.Cylinder = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/greyworld.osgt') 
-        time.sleep(10) 
-        self.Cylinder.move(0.0, 0.0, 0.0, hidden=False, scale=3)
-
+        self.Cylinder = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/greyworld_09.osgt') 
+        time.sleep(1) 
+        self.Cylinder.move(0.0, 0.0, 0.06, hidden=False, scale=3)
         try:
             while True:
                 print("present a locust")
         except KeyboardInterrupt:
             self.unload_all()
-            self.process.terminate()  
+            #self.process.terminate()  
             exit()            
   
     #store locust position and call super class to move the osg file
@@ -72,7 +71,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     e = MyExperiment.new_osg2(debug=args.debug_display)
-    e.start(record=False)
+    #e.start(record=False)
     e.run_forever()
 
 

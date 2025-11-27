@@ -369,7 +369,7 @@ class MyExperiment(ExperimentBase):
                                 hidden=False
                             )
 
-                        if current_distance_from_origin >= TestDis & current_distance_from_origin < ISI_end_distance:
+                        if TestDis <= current_distance_from_origin < ISI_end_distance:
                             Locust1.move(
                                 pos1[0], pos1[1],
                                 0.06,

@@ -170,7 +170,7 @@ class MyExperiment(ExperimentBase):
                     TestSpeed = Condition[1]     # movement speed of test Locust
 
 
-                    ISI_end_distance = random.randint(2500,3500) * TestSpeed  
+                    ISI_end_distance = random.randint(2500,3500) * TestSpeed + TestDis
 
                     # Hide bait Locust
                     Locust_preChoice.move(posBaitx, posBaity, 0.06, orientation_z=orientation_bait, hidden=True)

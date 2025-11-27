@@ -169,6 +169,9 @@ class MyExperiment(ExperimentBase):
                     LocustTexture = Condition[0]       # which texture to use in this trial
                     TestSpeed = Condition[1]     # movement speed of test Locust
 
+
+                    ISI_end_distance = random.randint(2500,3500) * TestSpeed  
+
                     # Hide bait Locust
                     Locust_preChoice.move(posBaitx, posBaity, 0.06, orientation_z=orientation_bait, hidden=True)
 
@@ -366,7 +369,21 @@ class MyExperiment(ExperimentBase):
                                 hidden=False
                             )
 
-                        if current_distance_from_origin >= TestDis:
+                        if current_distance_from_origin >= TestDis & current_distance_from_origin < ISI_end_distance:
+                            Locust1.move(
+                                pos1[0], pos1[1],
+                                0.06,
+                                orientation_z=orientation_test,
+                                hidden=True
+                            ) 
+                            Locust2.move(
+                                pos1[0], pos1[1],
+                                0.06,
+                                orientation_z=orientation_test,
+                                hidden=True
+                            )
+
+                        if current_distance_from_origin >= ISI_end_distance:   
                             Locust1.move(
                                 pos1[0], pos1[1],
                                 0.06,
@@ -378,7 +395,7 @@ class MyExperiment(ExperimentBase):
                                 0.06,
                                 orientation_z=orientation_test,
                                 hidden=True
-                            )
+                            ) 
                             #has_test = False
                             test_hidden = False
                             reappeared = False

@@ -69,6 +69,7 @@ class MyExperiment(ExperimentBase):
         iterator = 0           # global loop counter
         trialNum = 0           # trial counter
         Trial_label = None     # label of current trial
+        z_pos = 0.065
 
         # Flags for the test Locust
         #has_test = False       # becomes True once we spawned a test Locust. This boolean is not used yet.
@@ -89,7 +90,7 @@ class MyExperiment(ExperimentBase):
         
 
         # Distance threshold for hiding the test Locust
-        hide_distance = 0.04  # m
+        hide_distance = 0.02  # m
         Repeats = 30
         base_conditions = list(
             np.array(np.meshgrid(TextureInit, SpeedInit)).T.reshape(-1, 2)
@@ -121,21 +122,24 @@ class MyExperiment(ExperimentBase):
         # Load base Locust model (used for cloning)
         Locust = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x.osgt')
         Locust.move(hidden=True)  # keep base object hidden
+        Cylinder = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/greyworld_05.osgt') 
+        Cylinder.move(0.0, 0.0, 0.0, hidden=False, scale=3)
 
         # Bait Locust
         Locust_preChoice = Locust.clone('bait', how='shallow')
-        Locust_preChoice.move(posBaitx, posBaity, 0.06, orientation_z=orientation_bait, hidden=True)
+        Locust_preChoice.move(posBaitx, posBaity, z_pos, orientation_z=orientation_bait, hidden=True)
         Locust_preChoice.animation_start('ArmatureAction')
-        Locust_preChoice.move(posBaitx, posBaity, 0.06, orientation_z=orientation_bait, hidden=False)
+        Locust_preChoice.move(posBaitx, posBaity, z_pos, orientation_z=orientation_bait, hidden=False)
+
         
         orientation_test = FocalHeading - 1.57
         pos1 = [100, 100]   # placeholder for test Locust position
         # Test Locust (for choice phase)
         Locust1 = Locust.clone('test', how='shallow')
-        Locust1.move(pos1[0], pos1[1], 0.06, orientation_z= -1.57, hidden=True)
+        Locust1.move(pos1[0], pos1[1], z_pos, orientation_z= -1.57, hidden=True)
         #Locust1.animation_start('ArmatureAction')
         Locust2 = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x_black.osgt')
-        Locust2.move(pos1[0], pos1[1], 0.06, orientation_z= -1.57, hidden=True)
+        Locust2.move(pos1[0], pos1[1], z_pos, orientation_z= -1.57, hidden=True)
         #Locust2.animation_start('ArmatureAction')
 
     
@@ -151,7 +155,7 @@ class MyExperiment(ExperimentBase):
                 if TriggerDist < BaitPos < WorldBorder:
                     posBaitx += spdBaitx + self.deltas[0]
                     posBaity += spdBaity + self.deltas[1]
-                    Locust_preChoice.move(posBaitx, posBaity, 0.06, orientation_z=orientation_bait, hidden=False)
+                    Locust_preChoice.move(posBaitx, posBaity, z_pos, orientation_z=orientation_bait, hidden=False)
 
                 # If bait passes WorldBorder: respawn in front of the animal
                 if WorldBorder < BaitPos:
@@ -159,8 +163,9 @@ class MyExperiment(ExperimentBase):
                     spdBaity = 0.0001 * np.sin(FocalHeading)
                     posBaitx = BaitDis * np.cos(FocalHeading)
                     posBaity = BaitDis * np.sin(FocalHeading)
+                    orientation_bait = FocalHeading + 1.57
                 
-                    Locust_preChoice.move(posBaitx, posBaity, 0.06, orientation_z=orientation_bait, hidden=False)
+                    Locust_preChoice.move(posBaitx, posBaity, z_pos, orientation_z=orientation_bait, hidden=False)
 
                 if TriggerDist > BaitPos:
 
@@ -173,7 +178,7 @@ class MyExperiment(ExperimentBase):
                     ISI_end_distance = random.randint(2500,3500) * TestSpeed + TestDis
 
                     # Hide bait Locust
-                    Locust_preChoice.move(posBaitx, posBaity, 0.06, orientation_z=orientation_bait, hidden=True)
+                    Locust_preChoice.move(posBaitx, posBaity, z_pos, orientation_z=orientation_bait, hidden=True)
 
                     print("Trial number (state 0): {}".format(trialNum))
 
@@ -208,26 +213,26 @@ class MyExperiment(ExperimentBase):
                     if LocustTexture == 1:
                         Locust1.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=False
                         )
                         Locust2.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=True
                         )
                     else:
                         Locust1.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=True
                         )
                         Locust2.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=False
                         )
@@ -250,9 +255,11 @@ class MyExperiment(ExperimentBase):
                 # One step of movement along the same straight line
                 pos1[0] += spdTestx
                 pos1[1] += spdTesty
+                #print(pos1[0],pos1[1])
 
                 # Current radial distance from the origin (animal)
                 current_distance_from_origin = math.sqrt(pos1[0]**2 + pos1[1]**2)
+                #print(current_distance_from_origin)
 
                 if not test_hidden:
                     # Visible part, moving towards center
@@ -260,125 +267,132 @@ class MyExperiment(ExperimentBase):
                         # Crossed inside the hide-threshold: hide test Locust
                         Locust1.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=True
                         )
                         Locust2.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=True
                         )
                         test_hidden = True
 
                     elif LocustTexture == 1:
+                        # hide distance is smaller than the distance to origin so one of the agent appear
                         Locust1.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=False
                         )
                         Locust2.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=True
                         )
                     else:
                         Locust1.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=True
                         )
                         Locust2.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=False
                         )
                 else:
+                    # this section is after collision point
                     if not reappeared:
+                        # from the start of collision point,current_distance_from_origin will start to increase until it pass the hide disstance
                         if current_distance_from_origin < hide_distance:
+                            #still within the hide distance
                             Locust1.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
                             )
                             Locust2.move(
                             pos1[0], pos1[1],
-                            0.06,
+                            z_pos,
                             orientation_z=orientation_test,
                             hidden=True
                         )
                         elif LocustTexture == 1:
+                            #one of the locusts reappeared
                             Locust1.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=False
                             )
                             Locust2.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
                             )
                             reappeared = True
                         else:
+                            #one of the locusts reappeared
                             Locust1.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
                             )
                             Locust2.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=False
                             )
                             reappeared = True
                     else:
+                        #from the start of reappearance, agent should keep its toward the same direction until it reaches the initial spawning distance.
                         if LocustTexture == 1:
                             Locust1.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=False
                             )
                             Locust2.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
                             )
                         else:
                             Locust1.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
                             )
                             Locust2.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=False
                             )
 
-                        if TestDis <= current_distance_from_origin < ISI_end_distance:
+                        if ISI_end_distance > current_distance_from_origin >= TestDis:
                             Locust1.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
-                            ) 
+                            )
                             Locust2.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
                             )
@@ -386,13 +400,13 @@ class MyExperiment(ExperimentBase):
                         if current_distance_from_origin >= ISI_end_distance:   
                             Locust1.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
                             )
                             Locust2.move(
                                 pos1[0], pos1[1],
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_test,
                                 hidden=True
                             ) 
@@ -406,11 +420,12 @@ class MyExperiment(ExperimentBase):
                             spdBaity = BaitSpeed * np.sin(FocalHeading)
                             posBaitx = BaitDis * np.cos(FocalHeading)
                             posBaity = BaitDis * np.sin(FocalHeading)
+                            orientation_bait = FocalHeading + 1.57
                         
 
                             Locust_preChoice.move(
                                 posBaitx, posBaity,
-                                0.06,
+                                z_pos,
                                 orientation_z=orientation_bait,
                                 hidden=False
                             )

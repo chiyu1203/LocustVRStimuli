@@ -32,11 +32,13 @@ class MyExperiment(ExperimentBase):
         posBaity = BaitDis * np.sin(FocalHeading)
         orientation = FocalHeading - 1.57
         Locust = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x.osgt')
-        time.sleep(1) 
-        Locust.move(posBaitx,posBaity, 0.06, orientation_z = orientation, hidden=False)
-        self.Cylinder = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/greyworld_09.osgt') 
-        time.sleep(1) 
-        self.Cylinder.move(0.0, 0.0, 0.06, hidden=False, scale=3)
+        #Locust = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x_black.osgt')
+        time.sleep(0.5) 
+        #Locust.move(posBaitx, posBaity, 0.065, orientation_z = orientation, hidden=False)
+        Locust.move(posBaitx, posBaity, 0, orientation_z = orientation, hidden=False)
+        self.Cylinder = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/greyworld_05.osgt') 
+        time.sleep(0.5) 
+        self.Cylinder.move(0.0, 0.0, 0.0, hidden=False, scale=3)
         try:
             while True:
                 print("present a locust")

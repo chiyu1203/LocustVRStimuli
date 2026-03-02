@@ -53,6 +53,7 @@ class MyExperiment(ExperimentBase):
         os.makedirs(self.folder_path) 
         shutil.copy(os.path.abspath(__file__), self.folder_path + '/' + os.path.basename(__file__))
         self.output = self.folder_path + '/' + 'data' + '.dat'
+        z_pos = 0.065
 
         state = 0
         iterator = 0
@@ -77,31 +78,30 @@ class MyExperiment(ExperimentBase):
 
         #parameters for choice phase
         TestAngleBet = np.radians(60)
-        DistancesInit = [0.1, 0.06] # m
-        SpeedInit = [0.000001,0.0001, 0.0005] # meter/frame
+        Variable1 = [0.06] # m
+        Variable2 = [0,1,2] # 0 means black, 1 means gregarious texture, 2 means yellow
+        #Variable2 = [0.000001,0.0001, 0.0005] # meter/frame
         
         #parameters for randomise parameter combinations
-        Repeats = 30
+        Repeats = 60
         #Here to randomly shuffle the combination of different parameters
-        base_conditions = list(np.array(np.meshgrid(DistancesInit, SpeedInit)).T.reshape(-1, 2))
+        base_conditions = list(np.array(np.meshgrid(Variable1, Variable2)).T.reshape(-1, 2))
         ConditionsInit = []
         for a in range(Repeats):
             shuffled = base_conditions[:]
             random.shuffle(shuffled)
             ConditionsInit.extend(shuffled)
         ConditionsInit = np.array(ConditionsInit)
-        #print(ConditionsInit)
 
         base_toggle = [1, 2]
         ToggleInit = []
-        for i in range(Repeats * len(DistancesInit)*len(SpeedInit)):
+        for i in range(Repeats * len(Variable1)*len(Variable2)):
             toggle_pair = base_toggle[:]
             random.shuffle(toggle_pair)
             ToggleInit.append(toggle_pair)
         ToggleInit = np.array(ToggleInit)
 
-        #print(ToggleInit)
-        #Doucle check the following code  about randomising the position of the biat animal in the pre-choice phase
+        #Doucle check the following code  about randomising the position of the bait animal in the pre-choice phase
         FocalHeading = self.FocalAngle.value 
         
         spdBaitx = BaitSpeed * np.cos(FocalHeading)
@@ -114,34 +114,37 @@ class MyExperiment(ExperimentBase):
         pos1 = [100,100]
         pos2 = [100,100]
 
-        Locust = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust.osgt')
-        Locust.move(hidden=True)
+        Locust = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x.osgt')
+        Locust.move(hidden=True)  # keep base object hidden
+        Cylinder = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/greyworld_05.osgt') 
+        Cylinder.move(0.0, 0.0, 0.0, hidden=False, scale=3)
+        
+        Locust_preChoice = Locust.clone('bait', how='shallow')
+        Locust_preChoice.move(posBaitx, posBaity, z_pos, orientation_z=orientation, hidden=True)
+        Locust_preChoice.animation_start('ArmatureAction')
+        Locust_preChoice.move(posBaitx, posBaity, z_pos, orientation_z=orientation, hidden=False)
 
-
+        #orientation_test = FocalHeading - 1.57 This variable is not used because bait and test animals were at the same orientation relative to the focal animal.
+        pos1 = [100, 100]   # placeholder for test Locust position
+        # Test Locust (for choice phase)
         name = 'copy' + str(1)
         Locust1 = Locust.clone(name, how='shallow')
-        Locust1.move(pos1[0],pos1[1], 0.06, orientation_z = 1.57, hidden=True)
-        Locust1.animation_start('ArmatureAction')
-
+        Locust1.move(pos1[0], pos1[1], z_pos, orientation_z= 1.57, hidden=True)
         name = 'copy' + str(2)
         Locust2 = Locust.clone(name, how='shallow')
-        Locust2.move(pos2[0],pos2[1], 0.06, orientation_z = 1.57, hidden=True)
-        Locust2.animation_start('ArmatureAction')
-
-        name = 'copy' + str(3)
-        Locust_preChoice = Locust.clone(name, how='shallow')
-        Locust_preChoice.move(posBaitx,posBaity, 0.06, orientation_z = orientation, hidden=True)
-        Locust_preChoice.animation_start('ArmatureAction')
-
-
-        Locust_preChoice.move(posBaitx,posBaity, 0.06, orientation_z = orientation, hidden = False)
-
+        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = 1.57, hidden=True)
+        #Locust1.animation_start('ArmatureAction')
+        Locust_black = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x_black.osgt')
+        Locust_black.move(pos1[0], pos1[1], z_pos, orientation_z= 1.57, hidden=True)
+        #Locust_black.animation_start('ArmatureAction')
+        Locust_yellow = self.load_osg('/home/loopbio/Documents/LocustVR2_2/Stimulus/Locust_066x_yellow.osgt')
+        Locust_yellow.move(pos1[0], pos1[1], z_pos, orientation_z= 1.57, hidden=True)
+        #Locust_yellow.animation_start('ArmatureAction')
 
         while 1:
             FocalHeading = self.FocalAngle.value 
             if state == 0:#pre choice phase
                 Trial_label = None
-                #trial += 1
                 BaitPos = np.sqrt(posBaitx**2+posBaity**2)
 
                 if TriggerDist < BaitPos < WorldBorder: 
@@ -160,7 +163,7 @@ class MyExperiment(ExperimentBase):
                     posBaitx = BaitDis * np.cos(FocalHeading)
                     posBaity = BaitDis * np.sin(FocalHeading)
                     orientation = FocalHeading + 1.57
-                    Locust_preChoice.move(posBaitx,posBaity, 0.06, orientation_z = orientation, hidden=False)
+                    Locust_preChoice.move(posBaitx,posBaity, z_pos, orientation_z = orientation, hidden=False)
 
                 if TriggerDist > BaitPos:
 
@@ -168,10 +171,10 @@ class MyExperiment(ExperimentBase):
                     # select the condition for this and the left-right counterblance trial
                     Condition = ConditionsInit[trialNum // 2]
                     TestDis = Condition[0]
-                    TestSpeed = Condition[1]
+                    TestVariable2 = Condition[1]
 
                     posCx, posCy = 100, 100
-                    Locust_preChoice.move(posBaitx,posBaity, 0.06, orientation_z = orientation, hidden = True)
+                    Locust_preChoice.move(posBaitx,posBaity, z_pos, orientation_z = orientation, hidden = True)
 
                     
 
@@ -182,42 +185,70 @@ class MyExperiment(ExperimentBase):
                                         
                     orientation1 = FocalHeading + 1.57 - TestAngleBet
                     orientation2 = FocalHeading + 1.57 + TestAngleBet
-
-                    Locust1.move(pos1[0],pos1[1], 0.06, orientation_z = orientation1,hidden = False)
-                    Locust2.move(pos2[0],pos2[1], 0.06, orientation_z = orientation2,hidden = False)
-                    print("Trial number (state 0): {}".format(trialNum))
                     
+                    print("Trial number (state 0): {}".format(trialNum))
                     # select symetry
                     if trialNum % 2 == 0:
                         state = ToggleInit[trialNum // 2][0]
                     else:
                         state = ToggleInit[trialNum // 2][1]
 
-                    if state == 1:
-                        spdTestx = TestSpeed * np.cos(FocalHeading-TestAngleBet)
-                        spdTesty = TestSpeed * np.sin(FocalHeading-TestAngleBet)
-                    else:
-                        spdTestx = TestSpeed * np.cos(FocalHeading+TestAngleBet)
-                        spdTesty = TestSpeed * np.sin(FocalHeading+TestAngleBet)
+                    #Texture variable 0 means the combination between black and gregarious; 1 is between yellow and gregarious; 2 is between black and yellow
+                    if state==1 and TestVariable2==0:# this is black vs. gregarious
+                        Locust_black.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust_yellow.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                    elif state==1 and TestVariable2==1:# this is yellow vs. gregarious
+                        Locust_yellow.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust_black.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                    elif state==1 and TestVariable2==2:# this is yellow vs. black
+                        Locust_yellow.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust_black.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                    elif state==2 and TestVariable2==0:# this is gregarious vs. black
+                        Locust_yellow.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust_black.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                    elif state==2 and TestVariable2==1:# this is gregarious vs. yellow
+                        Locust_black.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust_yellow.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                    elif state==2 and TestVariable2==2:# this is black vs. yellow
+                        Locust_black.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust_yellow.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
 
-                    Trial_label = 'T{}_CD{}_CS{}_S{}'.format(trialNum, round(TestDis * 100), round(TestSpeed * 10000), state)
+                    Trial_label = 'T{}_CD{}_CS{}_S{}'.format(trialNum, round(TestDis * 100),TestVariable2, state)
 
                     print('Trial number: {}'.format(trialNum))
                     print("State: {}".format(state))
                     print("Distance: {} cm".format(TestDis * 100))
-                    print("Speed: {} cm/s".format(TestSpeed * 10000))
-                    print("Trial lable: {}".format(Trial_label))
-
-                    #trialNum += 1
-
+                    print("Texture: {}".format(TestVariable2))
+                    print("Trial label: {}".format(Trial_label))
             if state == 1:
                 if iterator2 < TestTime:
-                    
-                    pos1[0] += spdTestx
-                    pos1[1] += spdTesty
-
-                    Locust1.move(pos1[0],pos1[1], 0.06, orientation_z = orientation1,hidden = False)# constant speed group
-                    Locust2.move(pos2[0],pos2[1], 0.06, orientation_z = orientation2,hidden = False)# constant distance group
+                    if TestVariable2==0:
+                        Locust_black.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust_yellow.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                    elif TestVariable2==1:
+                        Locust_yellow.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust_black.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                    elif TestVariable2==2:
+                        Locust_yellow.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust_black.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
 
                     iterator2 += 1
 
@@ -225,22 +256,20 @@ class MyExperiment(ExperimentBase):
 
                     pos1 = [100,100]
                     pos2 = [100,100] 
-                    Locust1.move(pos1[0],pos1[1], 0.06, orientation_z = orientation1,hidden = True)
-                    Locust2.move(pos2[0],pos2[1], 0.06, orientation_z = orientation2,hidden = True)
-
+                    Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                    Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                    Locust_black.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                    Locust_yellow.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
                     iterator2 += 1
 
                 if iterator2 == ISI: 
-
-                    #FocalHeading = self.FocalAngle.value 
-
-                    spdBaitx = TestSpeed * np.cos(FocalHeading)
-                    spdBaity = TestSpeed * np.sin(FocalHeading)
+                    spdBaitx = TestVariable2 * np.cos(FocalHeading)
+                    spdBaity = TestVariable2 * np.sin(FocalHeading)
                     posBaitx = BaitDis * np.cos(FocalHeading)
                     posBaity = BaitDis * np.sin(FocalHeading)
                     orientation = FocalHeading + 1.57
 
-                    Locust_preChoice.move(posBaitx,posBaity, 0.06, orientation_z = orientation, hidden=False)
+                    Locust_preChoice.move(posBaitx,posBaity, z_pos, orientation_z = orientation, hidden=False)
 
                     iterator2 = 0
                     state = 0
@@ -250,12 +279,21 @@ class MyExperiment(ExperimentBase):
 
             if state == 2:
                 if iterator2 < TestTime:
-                    
-                    pos2[0] += spdTestx
-                    pos2[1] += spdTesty
-
-                    Locust1.move(pos1[0],pos1[1], 0.06, orientation_z = orientation1,hidden = False)
-                    Locust2.move(pos2[0],pos2[1], 0.06, orientation_z = orientation2,hidden = False)
+                    if TestVariable2==0:
+                        Locust_yellow.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust_black.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                    elif TestVariable2==1:
+                        Locust_black.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust_yellow.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                    elif TestVariable2==2:
+                        Locust_black.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = False)
+                        Locust_yellow.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = False)
+                        Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                        Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
 
                     iterator2 += 1
 
@@ -263,23 +301,22 @@ class MyExperiment(ExperimentBase):
 
                     pos1 = [100,100]
                     pos2 = [100,100] 
-                    Locust1.move(pos1[0],pos1[1], 0.06, orientation_z = orientation1,hidden = True)
-                    Locust2.move(pos2[0],pos2[1], 0.06, orientation_z = orientation2,hidden = True)
-
+                    Locust1.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                    Locust2.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
+                    Locust_black.move(pos1[0],pos1[1], z_pos, orientation_z = orientation1,hidden = True)
+                    Locust_yellow.move(pos2[0],pos2[1], z_pos, orientation_z = orientation2,hidden = True)
 
                     iterator2 += 1
 
                 if iterator2 == ISI: 
                     
-                    #FocalHeading = self.FocalAngle.value 
-
-                    spdBaitx = TestSpeed * np.cos(FocalHeading)
-                    spdBaity = TestSpeed * np.sin(FocalHeading)
+                    spdBaitx = TestVariable2 * np.cos(FocalHeading)
+                    spdBaity = TestVariable2 * np.sin(FocalHeading)
                     posBaitx = BaitDis * np.cos(FocalHeading)
                     posBaity = BaitDis * np.sin(FocalHeading)
                     orientation = FocalHeading + 1.57
 
-                    Locust_preChoice.move(posBaitx,posBaity, 0.06, orientation_z = orientation, hidden=False)
+                    Locust_preChoice.move(posBaitx,posBaity, z_pos, orientation_z = orientation, hidden=False)
                     
                     iterator2 = 0
                     state = 0
@@ -288,7 +325,6 @@ class MyExperiment(ExperimentBase):
                     Trial_label = None
 
             with open(self.output, "a") as myfile:
-                    #s = "{} {} {} {} {} {} {} {} {} {} {}\n".format(posBaitx, posBaity, pos1[0], pos1[1], pos2[0], pos2[1], self.deltas[0], self.deltas[1], trialNum, state, time.time())
                     s = "{} {} {} {} {} {} {} {} {} {} {} {} {}\n".format(self.deltas[0], self.deltas[1],FocalHeading,time.time(),trialNum, state, Trial_label,pos1[0], pos1[1], pos2[0], pos2[1],posBaitx, posBaity)
                     myfile.write(s) 
 

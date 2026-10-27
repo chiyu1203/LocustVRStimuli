@@ -177,31 +177,6 @@ def validate_trial_plan(plan, number_of_blocks):
                 assert rows[0]["pair_size"] == 1
 
 
-def segment_reaches_radius(x0, y0, x1, y1, radius):
-    """Return True when a movement segment enters the trigger circle.
-
-    Checking the complete segment prevents a large tracker update from jumping
-    from one side of the focal animal to the other without ever producing an
-    endpoint whose distance is below the trigger threshold.
-    """
-    movement_x = x1 - x0
-    movement_y = y1 - y0
-    movement_squared = movement_x ** 2 + movement_y ** 2
-
-    if movement_squared == 0.0:
-        closest_x = x0
-        closest_y = y0
-    else:
-        projection = -(
-            x0 * movement_x + y0 * movement_y
-        ) / movement_squared
-        projection = max(0.0, min(1.0, projection))
-        closest_x = x0 + projection * movement_x
-        closest_y = y0 + projection * movement_y
-
-    return closest_x ** 2 + closest_y ** 2 <= radius ** 2
-
-
 class MyExperiment(ExperimentBase):
     """LocustVR experiment controller."""
 
@@ -223,8 +198,6 @@ class MyExperiment(ExperimentBase):
 
         self.unload_all()
         self._olock = threading.Lock()
-        self._world_initialized = False
-
         self.FocalAngle = Value(c_double, 0.0)
         self.process = Process(target=self.update_orientation)
         # Prevent a setup error before the main try/finally block from leaving
@@ -260,15 +233,6 @@ class MyExperiment(ExperimentBase):
     def _hide_bait_objects(bait_objects):
         for stimulus in bait_objects.values():
             stimulus.move(hidden=True)
-
-    def _consume_world_delta(self):
-        """Return accumulated tracker motion and consume it exactly once."""
-        with self._olock:
-            delta_x = self.deltas[0]
-            delta_y = self.deltas[1]
-            self.deltas[0] = 0.0
-            self.deltas[1] = 0.0
-        return delta_x, delta_y
 
     def _stop_orientation_process(self):
         process = getattr(self, "process", None)
@@ -399,24 +363,12 @@ class MyExperiment(ExperimentBase):
             with open(self.output, "a", buffering=1) as data_file:
                 while not experiment_complete:
                     focal_heading = self.FocalAngle.value
-                    world_delta_x, world_delta_y = self._consume_world_delta()
 
                     if state == 0:
                         trial_label = None
-                        previous_bait_x = bait_x
-                        previous_bait_y = bait_y
-                        bait_x += bait_speed_x + world_delta_x
-                        bait_y += bait_speed_y + world_delta_y
                         bait_position = math.hypot(bait_x, bait_y)
-                        reached_trigger = segment_reaches_radius(
-                            previous_bait_x,
-                            previous_bait_y,
-                            bait_x,
-                            bait_y,
-                            trigger_distance,
-                        )
 
-                        if reached_trigger:
+                        if bait_position < trigger_distance:
                             if trial_num >= len(trial_plan):
                                 experiment_complete = True
                                 termination_reason = "schedule_complete"
@@ -490,7 +442,7 @@ class MyExperiment(ExperimentBase):
                                         trial_label,
                                     )
                                 )
-                        elif bait_position >= world_border:
+                        elif bait_position > world_border:
                             # Match the original experiment: after crossing the
                             # arena border, respawn the bait at half speed.
                             bait_speed_x = bait_respawn_speed * math.cos(
@@ -508,6 +460,10 @@ class MyExperiment(ExperimentBase):
                                 hidden=False,
                             )
                         else:
+                            # Preserve the tracker update order used by the
+                            # original choice_simultaneous_testing.py file.
+                            bait_x += bait_speed_x + self.deltas[0]
+                            bait_y += bait_speed_y + self.deltas[1]
                             active_bait.move(
                                 bait_x, bait_y, z_pos,
                                 orientation_z=bait_orientation,
@@ -573,8 +529,8 @@ class MyExperiment(ExperimentBase):
 
                     data_file.write(
                         "{} {} {} {} {} {} {} {} {} {} {} {} {}\n".format(
-                            world_delta_x,
-                            world_delta_y,
+                            self.deltas[0],
+                            self.deltas[1],
                             focal_heading,
                             time.time(),
                             trial_num,
@@ -636,14 +592,11 @@ class MyExperiment(ExperimentBase):
         """Store world-motion deltas; called by the LocustVR tracker."""
         del z  # retained callback signature; vertical motion is not used here
         with self._olock:
-            if not self._world_initialized:
+            if self.prevworld == [0.0, 0.0]:
                 self.prevworld = [x, y]
-                self._world_initialized = True
 
-            # Accumulate every callback.  The control loop may run at a
-            # different frequency and consumes the sum exactly once.
-            self.deltas[0] += x - self.prevworld[0]
-            self.deltas[1] += y - self.prevworld[1]
+            self.deltas[0] = x - self.prevworld[0]
+            self.deltas[1] = y - self.prevworld[1]
             self.prevworld = [x, y]
 
     def update_orientation(self):

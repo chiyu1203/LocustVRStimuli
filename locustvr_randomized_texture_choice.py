@@ -310,14 +310,15 @@ class MyExperiment(ExperimentBase):
         z_pos = 0.065
         world_border = 0.30
         bait_distance = 0.12
-        bait_speed = 0.0002
+        bait_initial_speed = 0.0002
+        bait_respawn_speed = 0.0001
         trigger_distance = 0.08
         test_angle = math.radians(60.0)
         test_distance = 0.06
 
         focal_heading = self.FocalAngle.value
-        bait_speed_x = bait_speed * math.cos(focal_heading)
-        bait_speed_y = bait_speed * math.sin(focal_heading)
+        bait_speed_x = bait_initial_speed * math.cos(focal_heading)
+        bait_speed_y = bait_initial_speed * math.sin(focal_heading)
         bait_x = bait_distance * math.cos(focal_heading)
         bait_y = bait_distance * math.sin(focal_heading)
         bait_orientation = focal_heading + math.pi / 2.0
@@ -490,8 +491,14 @@ class MyExperiment(ExperimentBase):
                                     )
                                 )
                         elif bait_position >= world_border:
-                            bait_speed_x = bait_speed * math.cos(focal_heading)
-                            bait_speed_y = bait_speed * math.sin(focal_heading)
+                            # Match the original experiment: after crossing the
+                            # arena border, respawn the bait at half speed.
+                            bait_speed_x = bait_respawn_speed * math.cos(
+                                focal_heading
+                            )
+                            bait_speed_y = bait_respawn_speed * math.sin(
+                                focal_heading
+                            )
                             bait_x = bait_distance * math.cos(focal_heading)
                             bait_y = bait_distance * math.sin(focal_heading)
                             bait_orientation = focal_heading + math.pi / 2.0
@@ -535,8 +542,12 @@ class MyExperiment(ExperimentBase):
 
                         if trial_tick >= isi_end_tick:
                             self._hide_choice_objects(choice_objects)
-                            bait_speed_x = bait_speed * math.cos(focal_heading)
-                            bait_speed_y = bait_speed * math.sin(focal_heading)
+                            bait_speed_x = bait_initial_speed * math.cos(
+                                focal_heading
+                            )
+                            bait_speed_y = bait_initial_speed * math.sin(
+                                focal_heading
+                            )
                             bait_x = bait_distance * math.cos(focal_heading)
                             bait_y = bait_distance * math.sin(focal_heading)
                             bait_orientation = focal_heading + math.pi / 2.0

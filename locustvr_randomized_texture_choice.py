@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # Original experiment code: Sercan Sayin (Sayin et al., 2025).
 # Later contributions: Aljoscha Markus, Jonathan Ernst, and Chi-Yu Lee.
 # Current design: nine fully shuffled trials per block, randomized bait texture,
@@ -40,6 +40,10 @@ from multiprocessing import Process, Value
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(SCRIPT_DIR)
+
+# Python 2.7 has no time.monotonic().  LocustVR installations using Python 2
+# therefore fall back to time.time(); Python 3 keeps the monotonic clock.
+CLOCK = getattr(time, "monotonic", time.time)
 
 # Hardware imports are optional only so that --validate-plan-only can run on a
 # development machine.  A real experiment refuses to start without them.
@@ -215,7 +219,7 @@ class MyExperiment(ExperimentBase):
     def _asset_path(self, filename):
         path = os.path.join(self.stimulus_dir, filename)
         if not os.path.isfile(path):
-            raise FileNotFoundError(
+            raise IOError(
                 "Required stimulus asset not found: {}. "
                 "Check --stimulus-dir.".format(path)
             )
@@ -351,7 +355,7 @@ class MyExperiment(ExperimentBase):
         self._hide_choice_objects(choice_objects)
 
         rng = random.Random(actual_seed ^ 0x5A17C0DE)
-        next_tick_deadline = time.monotonic()
+        next_tick_deadline = CLOCK()
         experiment_complete = False
         control_loop_tick = 0
         termination_reason = None
@@ -540,7 +544,7 @@ class MyExperiment(ExperimentBase):
                         termination_reason = "time_limit"
 
                     next_tick_deadline += self.LOOP_INTERVAL_SECONDS
-                    sleep_seconds = next_tick_deadline - time.monotonic()
+                    sleep_seconds = next_tick_deadline - CLOCK()
                     if sleep_seconds > 0:
                         time.sleep(sleep_seconds)
                     elif sleep_seconds < -1.0:
@@ -549,7 +553,7 @@ class MyExperiment(ExperimentBase):
                             "Control loop is more than one second behind; "
                             "resetting its timing deadline."
                         )
-                        next_tick_deadline = time.monotonic()
+                        next_tick_deadline = CLOCK()
 
             if termination_reason == "time_limit":
                 print(

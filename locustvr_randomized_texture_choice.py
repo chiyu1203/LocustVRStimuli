@@ -84,6 +84,14 @@ CONDITIONS = (
 TRIALS_PER_BLOCK = 9
 
 
+def is_finite_number(value):
+    """Return True only for usable numeric tracker values (Python 2/3)."""
+    try:
+        return not (math.isnan(value) or math.isinf(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def build_trial_plan(number_of_blocks, seed=None):
     """Build and validate the randomized block schedule.
 
@@ -185,6 +193,7 @@ class MyExperiment(ExperimentBase):
     ISI_MIN_TICKS = 2500           # additional 25 seconds
     ISI_MAX_TICKS = 3500           # additional 35 seconds
     EXPERIMENT_TIME_TICKS = 360000  # historical ~60-minute safety cutoff
+    TRACKING_START_TIMEOUT_SECONDS = 30.0
     DEFAULT_BLOCKS = 60
 
     DEFAULT_STIMULUS_DIR = "/home/loopbio/Documents/LocustVR2_2/Stimulus"
@@ -198,7 +207,9 @@ class MyExperiment(ExperimentBase):
 
         self.unload_all()
         self._olock = threading.Lock()
-        self.FocalAngle = Value(c_double, 0.0)
+        # NaN means that the orientation process has not delivered a valid
+        # heading yet.  A real heading of 0 radians remains valid.
+        self.FocalAngle = Value(c_double, float("nan"))
         self.process = Process(target=self.update_orientation)
         # Prevent a setup error before the main try/finally block from leaving
         # an orphaned process that keeps Python alive.
@@ -240,7 +251,34 @@ class MyExperiment(ExperimentBase):
             process.terminate()
             process.join(timeout=2.0)
 
+    def _wait_for_valid_heading(self):
+        """Wait briefly for tracking before any stimulus can become visible."""
+        deadline = CLOCK() + self.TRACKING_START_TIMEOUT_SECONDS
+        while CLOCK() < deadline:
+            heading = self.FocalAngle.value
+            if is_finite_number(heading):
+                return heading
+            time.sleep(self.LOOP_INTERVAL_SECONDS)
+
+        raise RuntimeError(
+            "No valid focal-animal orientation was received within {:.0f} "
+            "seconds. Check realtime_orientation and the tracking input."
+            .format(self.TRACKING_START_TIMEOUT_SECONDS)
+        )
+
+    def _clear_pending_world_delta(self):
+        """Discard movement reported while the scene was still loading."""
+        with self._olock:
+            self.deltas[0] = 0.0
+            self.deltas[1] = 0.0
+
     def run_forever(self):
+        try:
+            focal_heading = self._wait_for_valid_heading()
+        except Exception:
+            self._stop_orientation_process()
+            raise
+
         timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "six_texture_conditions_{}blocks".format(self.number_of_blocks)
         self.folder_path = os.path.join(
@@ -280,7 +318,6 @@ class MyExperiment(ExperimentBase):
         test_angle = math.radians(60.0)
         test_distance = 0.06
 
-        focal_heading = self.FocalAngle.value
         bait_speed_x = bait_initial_speed * math.cos(focal_heading)
         bait_speed_y = bait_initial_speed * math.sin(focal_heading)
         bait_x = bait_distance * math.cos(focal_heading)
@@ -328,14 +365,6 @@ class MyExperiment(ExperimentBase):
             )
             bait_object.animation_start("ArmatureAction")
 
-        active_bait_texture = trial_plan[0]["bait_texture"]
-        active_bait = bait_objects[active_bait_texture]
-        active_bait.move(
-            bait_x, bait_y, z_pos,
-            orientation_z=bait_orientation,
-            hidden=False,
-        )
-
         # Two choice instances per texture allow identical left/right pairs.
         choice_objects = {
             TEXTURE_GREGARIOUS: (
@@ -352,6 +381,27 @@ class MyExperiment(ExperimentBase):
             ),
         }
         self._hide_choice_objects(choice_objects)
+
+        # Object loading can take long enough for tracker updates to arrive.
+        # Use the latest valid heading for the actual first placement and
+        # discard only the movement delta accumulated during setup.  Without
+        # this reset, the first bait could immediately cross its trigger and
+        # make the experiment appear to have skipped the bait phase.
+        focal_heading = self.FocalAngle.value
+        bait_speed_x = bait_initial_speed * math.cos(focal_heading)
+        bait_speed_y = bait_initial_speed * math.sin(focal_heading)
+        bait_x = bait_distance * math.cos(focal_heading)
+        bait_y = bait_distance * math.sin(focal_heading)
+        bait_orientation = focal_heading + math.pi / 2.0
+        self._clear_pending_world_delta()
+
+        active_bait_texture = trial_plan[0]["bait_texture"]
+        active_bait = bait_objects[active_bait_texture]
+        active_bait.move(
+            bait_x, bait_y, z_pos,
+            orientation_z=bait_orientation,
+            hidden=False,
+        )
 
         rng = random.Random(actual_seed ^ 0x5A17C0DE)
         next_tick_deadline = CLOCK()
@@ -600,9 +650,10 @@ class MyExperiment(ExperimentBase):
             self.prevworld = [x, y]
 
     def update_orientation(self):
-        """Continuously copy focal-animal heading into shared memory."""
+        """Continuously copy valid focal-animal headings into shared memory."""
         for angle in get_orientation():
-            self.FocalAngle.value = angle
+            if is_finite_number(angle):
+                self.FocalAngle.value = angle
 
 
 def parse_args(argv=None):

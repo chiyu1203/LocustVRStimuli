@@ -2,7 +2,7 @@
 # Original experiment code: Sercan Sayin (Sayin et al., 2025).
 # Later contributions: Aljoscha Markus, Jonathan Ernst, and Chi-Yu Lee.
 # Current design: nine fully shuffled trials per block, randomized bait texture,
-# 20-second choice phase, 25-35-second ISI, and a 60-minute safety cutoff.
+# static choice agents for 20 seconds, 25-35-second ISI, and a 60-minute cutoff.
 """LocustVR simultaneous two-choice experiment.
 
 Based on the experiment created for Sayin et al. (2025) and later modified by
@@ -14,10 +14,11 @@ side-swapped trials for each mixed pair.  Sixty blocks produce 540 planned
 trials.  Every trial receives a random black, yellow, or gregarious bait
 texture, recorded in the label as ``BT<texture>``.
 
-Stimuli are shown for 20 seconds, followed by a random 25-35 second ISI.  The
-experiment retains the 360,000-loop cutoff (about 60 minutes at 100 Hz).
-Tracking is saved in the original 13-column ``data.dat`` format, and a copy of
-this source file is placed in the result folder.
+Choice stimuli are positioned once and remain static for 20 seconds, followed
+by a random 25-35 second ISI.  The experiment retains the 360,000-loop cutoff
+(about 60 minutes at 100 Hz).  Tracking is saved in the original 13-column
+``data.dat`` format, and a copy of this source file is placed in the result
+folder.
 
 Requires LocustVR, FreemooVR/StimulusOSG2, ``realtime_orientation``, the four
 configured OSG assets, and the tracking callback ``move_world(x, y, z)``.
@@ -522,22 +523,10 @@ class MyExperiment(ExperimentBase):
 
                     if state in (1, 2):
                         if trial_tick < self.TEST_TIME_TICKS:
-                            left_object = choice_objects[
-                                current_trial["left_texture"]
-                            ][0]
-                            right_object = choice_objects[
-                                current_trial["right_texture"]
-                            ][1]
-                            left_object.move(
-                                left_position[0], left_position[1], z_pos,
-                                orientation_z=left_orientation,
-                                hidden=False,
-                            )
-                            right_object.move(
-                                right_position[0], right_position[1], z_pos,
-                                orientation_z=right_orientation,
-                                hidden=False,
-                            )
+                            # Both choice agents were positioned once when the
+                            # bait phase ended.  Do not send further movement
+                            # updates during the 20-second test phase, so they
+                            # remain completely static at those coordinates.
                             trial_tick += 1
 
                         elif trial_tick < isi_end_tick:

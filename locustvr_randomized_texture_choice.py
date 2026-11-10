@@ -2,7 +2,7 @@
 # Original experiment code: Sercan Sayin (Sayin et al., 2025).
 # Later contributions: Aljoscha Markus, Jonathan Ernst, and Chi-Yu Lee.
 # Current design: nine fully shuffled trials per block, randomized bait texture,
-# 20-second choice phase, 25-35-second ISI, and a 60-minute safety cutoff.
+# frozen VR view for 20 seconds, 25-35-second ISI, and a 60-minute cutoff.
 """LocustVR simultaneous two-choice experiment.
 
 Based on the experiment created for Sayin et al. (2025) and later modified by
@@ -14,14 +14,22 @@ side-swapped trials for each mixed pair.  Sixty blocks produce 540 planned
 trials.  Every trial receives a random black, yellow, or gregarious bait
 texture, recorded in the label as ``BT<texture>``.
 
-Stimuli are shown for 20 seconds, followed by a random 25-35 second ISI.  The
+Choice stimuli are positioned once and the displayed observer position is
+frozen for 20 seconds, so the complete VR view remains static even while the
+animal moves.  Tracking and orientation continue to update and are logged
+during this open-loop phase.  A random 25-35 second ISI follows.  The
 experiment retains the 360,000-loop cutoff (about 60 minutes at 100 Hz).
+The display locks the first valid observer height received during startup.
+If a heading arrives before a usable observer position, the display uses the
+configured fallback height (0.0 by default). Live observer updates outside
+the choice phase affect x and y.
 Tracking is saved in the original 13-column ``data.dat`` format, and a copy of
 this source file is placed in the result folder.
 
 Requires LocustVR, FreemooVR/StimulusOSG2, ``realtime_orientation``, the four
 configured OSG assets, and the tracking callback ``move_world(x, y, z)``.
 Use ``--validate-plan-only`` to check the schedule without hardware.
+
 """
 
 import argparse
@@ -52,6 +60,7 @@ try:
     from locustvr.experiment import ExperimentBase
     from freemoovr.proxy.stimulus_osg import StimulusOSG2Controller  # noqa: F401
     from realtime_orientation import get_orientation
+    #from realtime_orientation_smooth_claude import get_orientation
 except ImportError as exc:  # pragma: no cover - depends on the lab machine
     HARDWARE_IMPORT_ERROR = exc
 
@@ -82,6 +91,14 @@ CONDITIONS = (
 )
 
 TRIALS_PER_BLOCK = 9
+
+
+def is_finite_number(value):
+    """Return True only for usable numeric tracker values (Python 2/3)."""
+    try:
+        return not (math.isnan(value) or math.isinf(value))
+    except (TypeError, ValueError):
+        return False
 
 
 def build_trial_plan(number_of_blocks, seed=None):
@@ -185,7 +202,9 @@ class MyExperiment(ExperimentBase):
     ISI_MIN_TICKS = 2500           # additional 25 seconds
     ISI_MAX_TICKS = 3500           # additional 35 seconds
     EXPERIMENT_TIME_TICKS = 360000  # historical ~60-minute safety cutoff
+    TRACKING_START_TIMEOUT_SECONDS = 30.0
     DEFAULT_BLOCKS = 60
+    DEFAULT_FALLBACK_OBSERVER_Z = 0.0  # FreemooVR's initial observer height
 
     DEFAULT_STIMULUS_DIR = "/home/loopbio/Documents/LocustVR2_2/Stimulus"
     DEFAULT_DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "Data"))
@@ -197,8 +216,17 @@ class MyExperiment(ExperimentBase):
         print("INFO: START TIME is {}".format(current_time))
 
         self.unload_all()
+        self._observer_lock = threading.Lock()
+        self._observer_z = None
+        self._observer_position = None
+        self._frozen_observer_position = None
+        self._observer_view_frozen = False
+        self._install_observer_position_gate()
+
         self._olock = threading.Lock()
-        self.FocalAngle = Value(c_double, 0.0)
+        # NaN means that the orientation process has not delivered a valid
+        # heading yet.  A real heading of 0 radians remains valid.
+        self.FocalAngle = Value(c_double, float("nan"))
         self.process = Process(target=self.update_orientation)
         # Prevent a setup error before the main try/finally block from leaving
         # an orphaned process that keeps Python alive.
@@ -213,6 +241,7 @@ class MyExperiment(ExperimentBase):
         self.plan_seed = None
         self.stimulus_dir = self.DEFAULT_STIMULUS_DIR
         self.data_dir = self.DEFAULT_DATA_DIR
+        self.fallback_observer_z = self.DEFAULT_FALLBACK_OBSERVER_Z
 
     def _asset_path(self, filename):
         path = os.path.join(self.stimulus_dir, filename)
@@ -234,13 +263,95 @@ class MyExperiment(ExperimentBase):
         for stimulus in bait_objects.values():
             stimulus.move(hidden=True)
 
+    def _install_observer_position_gate(self):
+        """Route display positions through a gate without stopping tracking."""
+        controller = getattr(self, "_osg", None)
+        if controller is None or not hasattr(controller, "set_position"):
+            raise RuntimeError(
+                "LocustVR did not expose the OSG controller needed to freeze "
+                "the observer view during the test phase."
+            )
+
+        self._send_observer_position = controller.set_position
+        controller.set_position = self._route_observer_position
+
+    def _route_observer_position(self, x, y, z):
+        """Store the latest x and y at the locked observer height."""
+        if not (is_finite_number(x) and is_finite_number(y)):
+            return
+
+        with self._observer_lock:
+            if self._observer_z is None:
+                if not is_finite_number(z):
+                    return
+                self._observer_z = float(z)
+                logging.info("Locked observer height at z=%.6f", self._observer_z)
+
+            self._observer_position = (x, y, self._observer_z)
+            if self._observer_view_frozen:
+                display_position = self._frozen_observer_position
+            else:
+                display_position = self._observer_position
+            if display_position is not None:
+                self._send_observer_position(*display_position)
+
+    def _freeze_observer_view(self):
+        """Keep the currently displayed observer position fixed."""
+        with self._observer_lock:
+            if self._observer_view_frozen:
+                return
+            self._frozen_observer_position = self._observer_position
+            self._observer_view_frozen = True
+            # Without a received pose, hold the renderer's current view until
+            # the choice phase ends.
+            if self._frozen_observer_position is not None:
+                self._send_observer_position(*self._frozen_observer_position)
+
+    def _resume_observer_view(self):
+        """Resume display updates at the latest x and y and fixed height."""
+        with self._observer_lock:
+            if not self._observer_view_frozen:
+                return
+            self._observer_view_frozen = False
+            if self._observer_position is not None:
+                self._send_observer_position(*self._observer_position)
+
     def _stop_orientation_process(self):
         process = getattr(self, "process", None)
         if process is not None and process.is_alive():
             process.terminate()
             process.join(timeout=2.0)
 
+    def _wait_for_valid_heading(self):
+        """Wait for a measured heading before showing stimuli."""
+        deadline = CLOCK() + self.TRACKING_START_TIMEOUT_SECONDS
+        while CLOCK() < deadline:
+            heading = self.FocalAngle.value
+            if is_finite_number(heading):
+                return heading
+            time.sleep(self.LOOP_INTERVAL_SECONDS)
+
+        raise RuntimeError(
+            "No valid focal-animal heading was received within {:.0f} seconds. "
+            "Check the Motif image stream and realtime_orientation.get_orientation()."
+            .format(self.TRACKING_START_TIMEOUT_SECONDS)
+        )
+
     def run_forever(self):
+        try:
+            focal_heading = self._wait_for_valid_heading()
+        except Exception:
+            self._stop_orientation_process()
+            raise
+
+        with self._observer_lock:
+            if self._observer_z is None:
+                self._observer_z = self.fallback_observer_z
+                logging.info(
+                    "No initial observer position. Locked observer height at "
+                    "fallback z=%.6f", self._observer_z
+                )
+
         timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "six_texture_conditions_{}blocks".format(self.number_of_blocks)
         self.folder_path = os.path.join(
@@ -277,10 +388,9 @@ class MyExperiment(ExperimentBase):
         bait_initial_speed = 0.0002
         bait_respawn_speed = 0.0001
         trigger_distance = 0.08
-        test_angle = math.radians(60.0)
+        test_angle = math.radians(75.0)
         test_distance = 0.06
 
-        focal_heading = self.FocalAngle.value
         bait_speed_x = bait_initial_speed * math.cos(focal_heading)
         bait_speed_y = bait_initial_speed * math.sin(focal_heading)
         bait_x = bait_distance * math.cos(focal_heading)
@@ -289,8 +399,8 @@ class MyExperiment(ExperimentBase):
 
         left_position = [100.0, 100.0]
         right_position = [100.0, 100.0]
-        left_orientation = math.pi / 2.0
-        right_orientation = math.pi / 2.0
+        left_orientation = math.pi#math.pi / 2.0 for abdomen view
+        right_orientation = 0#math.pi / 2.0 for abdomen view
 
         # Load hidden base assets used as clone sources, plus the visible arena.
         gregarious_base = self.load_osg(
@@ -328,14 +438,6 @@ class MyExperiment(ExperimentBase):
             )
             bait_object.animation_start("ArmatureAction")
 
-        active_bait_texture = trial_plan[0]["bait_texture"]
-        active_bait = bait_objects[active_bait_texture]
-        active_bait.move(
-            bait_x, bait_y, z_pos,
-            orientation_z=bait_orientation,
-            hidden=False,
-        )
-
         # Two choice instances per texture allow identical left/right pairs.
         choice_objects = {
             TEXTURE_GREGARIOUS: (
@@ -352,6 +454,16 @@ class MyExperiment(ExperimentBase):
             ),
         }
         self._hide_choice_objects(choice_objects)
+
+        # Keep the first placement calculated before asset loading and retain
+        # tracker movement reported during setup, matching the earlier logic.
+        active_bait_texture = trial_plan[0]["bait_texture"]
+        active_bait = bait_objects[active_bait_texture]
+        active_bait.move(
+            bait_x, bait_y, z_pos,
+            orientation_z=bait_orientation,
+            hidden=False,
+        )
 
         rng = random.Random(actual_seed ^ 0x5A17C0DE)
         next_tick_deadline = CLOCK()
@@ -381,6 +493,7 @@ class MyExperiment(ExperimentBase):
                                 )
 
                                 active_bait.move(hidden=True)
+                                self._freeze_observer_view()
 
                                 left_position = [
                                     test_distance * math.cos(focal_heading - test_angle),
@@ -391,10 +504,10 @@ class MyExperiment(ExperimentBase):
                                     test_distance * math.sin(focal_heading + test_angle),
                                 ]
                                 left_orientation = (
-                                    focal_heading + math.pi / 2.0 - test_angle
+                                    focal_heading + math.pi - test_angle
                                 )
                                 right_orientation = (
-                                    focal_heading + math.pi / 2.0 + test_angle
+                                    focal_heading  + test_angle
                                 )
 
                                 self._hide_choice_objects(choice_objects)
@@ -472,25 +585,16 @@ class MyExperiment(ExperimentBase):
 
                     if state in (1, 2):
                         if trial_tick < self.TEST_TIME_TICKS:
-                            left_object = choice_objects[
-                                current_trial["left_texture"]
-                            ][0]
-                            right_object = choice_objects[
-                                current_trial["right_texture"]
-                            ][1]
-                            left_object.move(
-                                left_position[0], left_position[1], z_pos,
-                                orientation_z=left_orientation,
-                                hidden=False,
-                            )
-                            right_object.move(
-                                right_position[0], right_position[1], z_pos,
-                                orientation_z=right_orientation,
-                                hidden=False,
-                            )
+                            # Both choice agents were positioned once when the
+                            # bait phase ended.  Do not send further movement
+                            # updates during the 20-second test phase, so they
+                            # remain completely static at those coordinates.
                             trial_tick += 1
 
                         elif trial_tick < isi_end_tick:
+                            # The test is over.  Restore live VR motion while
+                            # tracking and logging continue without a break.
+                            self._resume_observer_view()
                             self._hide_choice_objects(choice_objects)
                             left_position = [100.0, 100.0]
                             right_position = [100.0, 100.0]
@@ -581,6 +685,7 @@ class MyExperiment(ExperimentBase):
                     )
                 )
         finally:
+            self._resume_observer_view()
             self._stop_orientation_process()
             try:
                 self._hide_choice_objects(choice_objects)
@@ -600,9 +705,10 @@ class MyExperiment(ExperimentBase):
             self.prevworld = [x, y]
 
     def update_orientation(self):
-        """Continuously copy focal-animal heading into shared memory."""
+        """Continuously copy valid focal-animal headings into shared memory."""
         for angle in get_orientation():
-            self.FocalAngle.value = angle
+            if is_finite_number(angle):
+                self.FocalAngle.value = angle
 
 
 def parse_args(argv=None):
@@ -630,6 +736,12 @@ def parse_args(argv=None):
         help="parent directory for timestamped result folders",
     )
     parser.add_argument(
+        "--fallback-observer-z", type=float,
+        default=MyExperiment.DEFAULT_FALLBACK_OBSERVER_Z,
+        help="fixed viewpoint height if no observer position arrives at startup "
+             "(default: %(default)s)",
+    )
+    parser.add_argument(
         "--validate-plan-only", action="store_true",
         help="build and validate the plan, print a summary, then exit",
     )
@@ -641,6 +753,8 @@ def main(argv=None):
 
     if args.blocks <= 0:
         raise SystemExit("--blocks must be greater than zero")
+    if not is_finite_number(args.fallback_observer_z):
+        raise SystemExit("--fallback-observer-z must be finite")
 
     if args.validate_plan_only:
         plan, seed = build_trial_plan(args.blocks, args.seed)
@@ -662,6 +776,7 @@ def main(argv=None):
     experiment.plan_seed = args.seed
     experiment.stimulus_dir = os.path.abspath(args.stimulus_dir)
     experiment.data_dir = os.path.abspath(args.data_dir)
+    experiment.fallback_observer_z = args.fallback_observer_z
     experiment.start(record=False)
     experiment.run_forever()
     return 0
